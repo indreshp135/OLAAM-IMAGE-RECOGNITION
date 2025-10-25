@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Olaam | Chiller Performance Analyzer</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <h1>Chiller Performance Analyzer</h1>
+            <p>Upload an image of your chiller's control panel to analyze its performance.</p>
+        </header>
+        <main class="app-main">
+            <div class="input-column">
+                <h2>Inputs</h2>
+                <div class="input-group">
+                    <label for="chiller-capacity">Chiller Capacity (Tons)</label>
+                    <input type="number" id="chiller-capacity" placeholder="e.g., 1800" required>
+                </div>
+                <div class="input-group">
+                    <label for="chiller-full-load">Chiller Full Load (kW)</label>
+                    <input type="number" id="chiller-full-load" placeholder="e.g., 1080">
+                </div>
+                <div class="input-group">
+                    <label for="image-input" class="file-upload-label">
+                        <span>Upload Chiller Panel Image</span>
+                    </label>
+                    <input type="file" id="image-input" accept="image/*" multiple>
+                </div>
+                <div id="image-preview" class="image-preview"></div>
+                <button id="extract-button">Analyze Performance</button>
+            </div>
+            <div class="output-column">
+                <h2>Parameters Recognized</h2>
+                <div id="output"></div>
+            </div>
+        </main>
+        <footer class="app-footer">
+            <p>&copy; 2025 Olaam. All rights reserved.</p>
+        </footer>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
