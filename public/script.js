@@ -7,8 +7,8 @@ const chillerCapacityInput = document.getElementById('chiller-capacity');
 const chillerFullLoadInput = document.getElementById('chiller-full-load');
 
 const displayMap = {
-    chiller_capacity_tons: { displayName: 'Chiller Capacity', unit: 'Tons' },
-    full_load_amps_percent: { displayName: 'Full Load Amps', unit: '%' },
+    chiller_capacity_tons: { displayName: 'Chiller Tons', unit: 'Tons' },
+    full_load_amps_percent: { displayName: '% of Full Load Amps', unit: '%' },
     input_kw: { displayName: 'Input Power', unit: 'kW' },
     chilled_liquid_leaving_temp_f: { displayName: 'Chilled Liquid Leaving Temp', unit: '°F' },
     chilled_liquid_entering_temp_f: { displayName: 'Chilled Liquid Entering Temp', unit: '°F' },
@@ -160,7 +160,10 @@ function displayData(data) {
     // headerRow.appendChild(valueHeader);
     // thead.appendChild(headerRow);
 
-    for (const key in combinedData) {
+    // sort
+    const sortedKeys = Object.keys(combinedData).sort();
+
+    for (const key of sortedKeys) {
         const row = document.createElement('tr');
         const fieldCell = document.createElement('td');
         const mapEntry = displayMap[key];
@@ -178,7 +181,7 @@ function displayData(data) {
     output.appendChild(table);
 
     const topic =  document.createElement('h2');
-    topic.textContent = 'Analysis Results';
+    topic.textContent = 'Diagnosis';
     output.appendChild(topic);
 
     const calculationsTable = document.createElement('table');
