@@ -271,7 +271,7 @@ async function callBackend(imageFiles, chillerCapacity, chillerFullLoad) {
     formData.append('chillerCapacity', chillerCapacity);
     formData.append('chillerFullLoad', chillerFullLoad);
 
-    const response = await fetch('http://localhost:3000/extract', {
+    const response = await fetch('https://image-recognition.deltaenergyplus.com/extract', {
         method: 'POST',
         body: formData,
     });
