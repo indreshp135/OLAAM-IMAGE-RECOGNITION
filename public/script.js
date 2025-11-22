@@ -7,7 +7,7 @@ const chillerCapacityInput = document.getElementById('chiller-capacity');
 const chillerFullLoadInput = document.getElementById('chiller-full-load');
 
 const displayMap = {
-    chiller_capacity_tons: { displayName: 'Chiller Tons', unit: 'Tons' },
+    chiller_capacity_tons: { displayName: 'Current Tons', unit: 'Tons' },
     full_load_amps_percent: { displayName: '% of Full Load Amps', unit: '%' },
     input_kw: { displayName: 'Input Power', unit: 'kW' },
     chilled_liquid_leaving_temp_f: { displayName: 'Chilled Liquid Leaving Temp', unit: '°F' },
@@ -23,8 +23,8 @@ const displayMap = {
     actualKWTon: { displayName: 'Actual kW/Ton', unit: '' },
     percentCapacity: { displayName: '% Capacity', unit: '%' },
     kwTonNeeded: { displayName: 'kW/Ton per AHRI', unit: '' },
-    inefficiency: { displayName: 'Potential Savings', unit: '%' },
-    kwSaved: { displayName: 'Potential kW Savings', unit: 'kW' },
+    inefficiency: { displayName: 'Savings %', unit: '%' },
+    kwSaved: { displayName: 'Savings in kW', unit: 'kW' },
 };
 
 imageInput.addEventListener('change', (event) => {
@@ -143,7 +143,6 @@ function displayData(data) {
         }
         return acc;
     }, {});
-
     combinedData.chiller_capacity_tons = chillerCapacityInput.value;
     combinedData.chiller_full_load_amps = chillerFullLoadInput.value;
 
@@ -162,6 +161,7 @@ function displayData(data) {
 
     // sort
     const sortedKeys = Object.keys(combinedData).sort();
+
 
     for (const key of sortedKeys) {
         const row = document.createElement('tr');
