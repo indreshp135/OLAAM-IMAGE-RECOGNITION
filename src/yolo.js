@@ -47,7 +47,7 @@ async function extractInformation(imagePath, mimeType, chillerCapacity, chillerF
     // Clean up the uploaded file
     fs.unlinkSync(imagePath);
 
-    const prompt = `Extract all visible asset information for each chiller from this image. If there are multiple chillers, extract the information for each one individually. Call the get_asset_information function with the data you find. Ensure that all extracted values are returned as numbers. For context, the chiller capacity is ${chillerCapacity} tons and the chiller full load is ${chillerFullLoad} amps; these two values are context only, so do not report them back as extracted values. Only include fields you can actually read on the panel, and omit any field that is not visible.`;
+    const prompt = `Extract all visible asset information for each chiller from this image. If there are multiple chillers, extract the information for each one individually. Call the get_asset_information function with the data you find. Ensure that all extracted values are returned as numbers. For context, the chiller capacity is ${chillerCapacity} tons and the chiller full load is ${chillerFullLoad} kW; these two values are context only, so do not report them back as extracted values. Only include fields you can actually read on the panel, and omit any field that is not visible.`;
 
     const response = await fetch(`${BASE_URL}/chat/completions`, {
         method: 'POST',

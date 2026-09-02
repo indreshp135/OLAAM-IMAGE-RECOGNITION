@@ -8,6 +8,7 @@ const chillerFullLoadInput = document.getElementById('chiller-full-load');
 
 const displayMap = {
     chiller_capacity_tons: { displayName: 'Current Tons', unit: 'Tons' },
+    chiller_full_load_kw: { displayName: 'Chiller Full Load', unit: 'kW' },
     full_load_amps_percent: { displayName: '% of Full Load Amps', unit: '%' },
     input_kw: { displayName: 'Input Power', unit: 'kW' },
     chilled_liquid_leaving_temp_f: { displayName: 'Chilled Liquid Leaving Temp', unit: '°F' },
@@ -144,7 +145,7 @@ function displayData(data) {
         return acc;
     }, {});
     combinedData.chiller_capacity_tons = chillerCapacityInput.value;
-    combinedData.chiller_full_load_amps = chillerFullLoadInput.value;
+    combinedData.chiller_full_load_kw = chillerFullLoadInput.value;
 
     const table = document.createElement('table');
     const thead = document.createElement('thead');
@@ -198,10 +199,10 @@ function displayData(data) {
 
     const condenserDeltaT = combinedData.condenser_liquid_leaving_temp_f - combinedData.condenser_liquid_entering_temp_f;
 
-    const inputPower = (parseFloat(combinedData.full_load_amps_percent) / 100) * parseFloat(combinedData.chiller_full_load_amps);
+    const inputPower = (parseFloat(combinedData.full_load_amps_percent) / 100) * parseFloat(combinedData.chiller_full_load_kw);
     const actualKWTon = inputPower / tons;
 
-    const percentCapacity = (parseFloat(combinedData.chiller_full_load_amps) / parseFloat(combinedData.chiller_capacity_tons)) * 100;
+    const percentCapacity = (parseFloat(combinedData.chiller_full_load_kw) / parseFloat(combinedData.chiller_capacity_tons)) * 100;
 
     const cwet = parseFloat(combinedData.condenser_liquid_entering_temp_f);
     const ariTable = getAriTable(combinedData.chiller_capacity_tons);
