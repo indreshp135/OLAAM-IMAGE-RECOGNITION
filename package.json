@@ -1,7 +1,7 @@
 {
   "name": "olaam-image-recognition",
   "version": "1.0.0",
-  "description": "This project is a simple web application that demonstrates how to extract information from an image of a Building Management System (BMS) using a large language model like Gemini.",
+  "description": "This project is a simple web application that demonstrates how to extract information from an image of a Building Management System (BMS) using a large language model served by Yolo-Auto.",
   "main": "src/index.js",
   "scripts": {
     "start": "nodemon src/index.js",
@@ -11,7 +11,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",

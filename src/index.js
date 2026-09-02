@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
-const { extractInformation } = require('./gemini');
+const { extractInformation } = require('./yolo');
 
 const app = express();
 const port = process.env.PORT || 4914;
