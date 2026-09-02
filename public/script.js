@@ -131,19 +131,47 @@ function findClosest(value, array) {
     return array.reduce((prev, curr) => Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev);
 }
 
+// Temperatures and percentages describe an operating point rather than a
+// quantity, so they are averaged across images. Summing them produced
+// impossible readings (two copies of one panel gave 96 degF chilled water and
+// 138% full load amps).
+const AVERAGED_FIELDS = new Set([
+    'full_load_amps_percent',
+    'chilled_liquid_leaving_temp_f',
+    'chilled_liquid_entering_temp_f',
+    'condenser_liquid_leaving_temp_f',
+    'condenser_liquid_entering_temp_f',
+    'discharge_superheat_f',
+]);
+
+function combineAssets(assets) {
+    const combined = {};
+    const counts = {};
+
+    for (const asset of assets) {
+        for (const key in asset) {
+            if (typeof asset[key] === 'number') {
+                combined[key] = (combined[key] || 0) + asset[key];
+                counts[key] = (counts[key] || 0) + 1;
+            } else {
+                combined[key] = asset[key];
+            }
+        }
+    }
+
+    for (const key of Object.keys(combined)) {
+        if (AVERAGED_FIELDS.has(key) && counts[key] > 1) {
+            combined[key] /= counts[key];
+        }
+    }
+
+    return combined;
+}
+
 function displayData(data) {
     output.innerHTML = ''; // Clear loader
 
-    const combinedData = data.reduce((acc, current) => {
-        for (const key in current) {
-            if (typeof current[key] === 'number') {
-                acc[key] = (acc[key] || 0) + current[key];
-            } else {
-                acc[key] = current[key];
-            }
-        }
-        return acc;
-    }, {});
+    const combinedData = combineAssets(data);
     combinedData.chiller_capacity_tons = chillerCapacityInput.value;
     combinedData.chiller_full_load_kw = chillerFullLoadInput.value;
 
@@ -202,7 +230,7 @@ function displayData(data) {
     const inputPower = (parseFloat(combinedData.full_load_amps_percent) / 100) * parseFloat(combinedData.chiller_full_load_kw);
     const actualKWTon = inputPower / tons;
 
-    const percentCapacity = (parseFloat(combinedData.chiller_full_load_kw) / parseFloat(combinedData.chiller_capacity_tons)) * 100;
+    const percentCapacity = (tons / parseFloat(combinedData.chiller_capacity_tons)) * 100;
 
     const cwet = parseFloat(combinedData.condenser_liquid_entering_temp_f);
     const ariTable = getAriTable(combinedData.chiller_capacity_tons);

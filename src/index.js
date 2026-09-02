@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
-const { extractInformation } = require('./yolo');
+const { extractInformation, combineAssets } = require('./yolo');
 
 const app = express();
 const port = process.env.PORT || 4914;
@@ -47,15 +47,7 @@ app.post('/extract', upload.array('images'), async (req, res) => {
         // Handle the case where we have multiple assets in one image
         const processedData = extractedData.map(data => {
             if (data.assets && Array.isArray(data.assets)) {
-                // Sum up the values for each property
-                return data.assets.reduce((acc, asset) => {
-                    for (const key in asset) {
-                        if (typeof asset[key] === 'number') {
-                            acc[key] = (acc[key] || 0) + asset[key];
-                        }
-                    }
-                    return acc;
-                }, {});
+                return combineAssets(data.assets);
             } else {
                 return data;
             }

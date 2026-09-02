@@ -87,4 +87,38 @@ async function extractInformation(imagePath, mimeType, chillerCapacity, chillerF
     throw new Error('Could not extract information from the image.');
 }
 
-module.exports = { extractInformation };
+// Temperatures and percentages describe an operating point rather than a
+// quantity, so they are averaged across assets; summing them yields readings
+// that cannot occur on a real panel.
+const AVERAGED_FIELDS = new Set([
+    'full_load_amps_percent',
+    'chilled_liquid_leaving_temp_f',
+    'chilled_liquid_entering_temp_f',
+    'condenser_liquid_leaving_temp_f',
+    'condenser_liquid_entering_temp_f',
+    'discharge_superheat_f'
+]);
+
+function combineAssets(assets) {
+    const combined = {};
+    const counts = {};
+
+    for (const asset of assets) {
+        for (const key in asset) {
+            if (typeof asset[key] === 'number') {
+                combined[key] = (combined[key] || 0) + asset[key];
+                counts[key] = (counts[key] || 0) + 1;
+            }
+        }
+    }
+
+    for (const key of Object.keys(combined)) {
+        if (AVERAGED_FIELDS.has(key) && counts[key] > 1) {
+            combined[key] /= counts[key];
+        }
+    }
+
+    return combined;
+}
+
+module.exports = { extractInformation, combineAssets };
