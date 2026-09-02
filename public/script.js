@@ -10,17 +10,18 @@ const displayMap = {
     chiller_capacity_tons: { displayName: 'Current Tons', unit: 'Tons' },
     chiller_full_load_kw: { displayName: 'Chiller Full Load', unit: 'kW' },
     full_load_amps_percent: { displayName: '% of Full Load Amps', unit: '%' },
-    input_kw: { displayName: 'Input Power', unit: 'kW' },
+    input_kw: { displayName: 'Input Power (panel)', unit: 'kW' },
+    chilled_water_flow_gpm: { displayName: 'Chilled Water Flow', unit: 'GPM' },
     chilled_liquid_leaving_temp_f: { displayName: 'Chilled Liquid Leaving Temp', unit: '°F' },
     chilled_liquid_entering_temp_f: { displayName: 'Chilled Liquid Entering Temp', unit: '°F' },
     condenser_liquid_leaving_temp_f: { displayName: 'Condenser Liquid Leaving Temp', unit: '°F' },
     condenser_liquid_entering_temp_f: { displayName: 'Condenser Liquid Entering Temp', unit: '°F' },
     discharge_superheat_f: { displayName: 'Discharge Superheat', unit: '°F' },
     deltaT: { displayName: 'Chiller Delta T', unit: '°F' },
-    flowGPM: { displayName: 'Flow', unit: 'GPM' },
+    flowGPM: { displayName: 'Flow Used', unit: 'GPM' },
     tons: { displayName: 'Tons', unit: 'Tons' },
     condenserDeltaT: { displayName: 'Condenser Delta T', unit: '°F' },
-    inputPower: { displayName: 'Input Power', unit: 'kW' },
+    inputPower: { displayName: 'Input Power Used', unit: 'kW' },
     actualKWTon: { displayName: 'Actual kW/Ton', unit: '' },
     percentCapacity: { displayName: '% Capacity', unit: '%' },
     kwTonNeeded: { displayName: 'kW/Ton per AHRI', unit: '' },
@@ -222,12 +223,21 @@ function displayData(data) {
     // calculationsThead.appendChild(calculationsHeaderRow);
 
     const deltaT = combinedData.chilled_liquid_entering_temp_f - combinedData.chilled_liquid_leaving_temp_f;
-    const flowGPM = 2.4 * parseFloat(chillerCapacityInput.value);
+    // Design flow is only an assumption; use the panel's own flow when it shows one.
+    const measuredFlowGPM = parseFloat(combinedData.chilled_water_flow_gpm);
+    const flowGPM = measuredFlowGPM > 0
+        ? measuredFlowGPM
+        : 2.4 * parseFloat(chillerCapacityInput.value);
     const tons = (deltaT * flowGPM) / 24;
 
     const condenserDeltaT = combinedData.condenser_liquid_leaving_temp_f - combinedData.condenser_liquid_entering_temp_f;
 
-    const inputPower = (parseFloat(combinedData.full_load_amps_percent) / 100) * parseFloat(combinedData.chiller_full_load_kw);
+    // A measured kW beats estimating it from % full load amps, which does not
+    // scale linearly with power and overstates the draw at part load.
+    const measuredInputKw = parseFloat(combinedData.input_kw);
+    const inputPower = measuredInputKw > 0
+        ? measuredInputKw
+        : (parseFloat(combinedData.full_load_amps_percent) / 100) * parseFloat(combinedData.chiller_full_load_kw);
     const actualKWTon = inputPower / tons;
 
     const percentCapacity = (tons / parseFloat(combinedData.chiller_capacity_tons)) * 100;
@@ -243,15 +253,18 @@ function displayData(data) {
     const kwTonNeeded = ariTable[closestCwet][closestPercentCap];
 
     const inefficiencyAbsolute = actualKWTon - kwTonNeeded;
-    const inefficiency = (inefficiencyAbsolute / kwTonNeeded) * 100;
-    const kwSaved = inefficiencyAbsolute * tons;
+    // A chiller running below the AHRI baseline has no savings left to take,
+    // so the figures are floored rather than reported as negative savings.
+    const beatsBaseline = inefficiencyAbsolute <= 0;
+    const inefficiency = beatsBaseline ? 0 : (inefficiencyAbsolute / kwTonNeeded) * 100;
+    const kwSaved = beatsBaseline ? 0 : inefficiencyAbsolute * tons;
 
     const calculations = {
         // deltaT,
-        // flowGPM,
+        flowGPM,
         // tons,
         // condenserDeltaT,
-        // inputPower,
+        inputPower,
         // actualKWTon,
         // percentCapacity,
         // kwTonNeeded,
@@ -275,6 +288,18 @@ function displayData(data) {
     // calculationsTable.appendChild(calculationsThead);
     calculationsTable.appendChild(calculationsTbody);
     output.appendChild(calculationsTable);
+
+    if (beatsBaseline) {
+        const note = document.createElement('div');
+        note.classList.add('suggestions');
+        const noteTitle = document.createElement('h3');
+        noteTitle.textContent = 'Performing better than AHRI baseline';
+        const noteBody = document.createElement('p');
+        noteBody.textContent = `This chiller is running at ${actualKWTon.toFixed(2)} kW/ton against an AHRI target of ${kwTonNeeded.toFixed(2)} kW/ton, so there are no savings to recover at this operating point.`;
+        note.appendChild(noteTitle);
+        note.appendChild(noteBody);
+        output.appendChild(note);
+    }
 
     // const suggestions = generateSuggestions(condenserDeltaT, combinedData.discharge_superheat_f);
 

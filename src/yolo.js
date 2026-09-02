@@ -27,7 +27,8 @@ const assetInformationTool = {
                             chilled_liquid_entering_temp_f: { ...NUMBER, description: 'Chilled liquid entering temperature in Fahrenheit' },
                             condenser_liquid_leaving_temp_f: { ...NUMBER, description: 'Condenser liquid leaving temperature in Fahrenheit' },
                             condenser_liquid_entering_temp_f: { ...NUMBER, description: 'Condenser liquid entering temperature in Fahrenheit' },
-                            discharge_superheat_f: { ...NUMBER, description: 'Discharge superheat in Fahrenheit' }
+                            discharge_superheat_f: { ...NUMBER, description: 'Discharge superheat in Fahrenheit' },
+                            chilled_water_flow_gpm: { ...NUMBER, description: 'Chilled water flow in gallons per minute' }
                         }
                     }
                 }

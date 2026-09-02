@@ -21,11 +21,17 @@ Users upload one or more panel images and provide basic inventory information (c
       - `condenser_liquid_leaving_temp_f`
       - `condenser_liquid_entering_temp_f`
       - `discharge_superheat_f`
+      - `chilled_water_flow_gpm`
   - Extraction is implemented via OpenAI‑compatible tool calling with a `get_asset_information` tool.
 
+- **Measured values preferred over estimates**
+  - Input power uses the panel's own `input_kw` when it is visible, falling back to `% full load amps × full-load kW` only when it is not. Amps percentage does not scale linearly with power, so the fallback overstates draw at part load.
+  - Chilled water flow uses the panel's `chilled_water_flow_gpm` when visible, falling back to design flow (`2.4 × capacity`). The fallback assumes design flow at every load, which understates kW/ton on a part-loaded chiller.
+  - Where a chiller already runs below its AHRI baseline the savings figures are floored at zero and a note is shown, rather than reporting negative savings.
+
 - **Multi‑asset support**
-  - If the model returns multiple `assets` for a single image, the backend aggregates numeric properties across those assets (sums each numeric field).
-  - The frontend further aggregates results across all uploaded images.
+  - If the model returns multiple `assets` for a single image, the backend combines them: temperatures and percentages are averaged, extensive quantities are summed. Summing every field produced impossible readings such as 96 °F chilled water.
+  - The frontend combines results across all uploaded images using the same rule.
 
 - **Chiller performance calculations**
   - Uses user‑provided:
@@ -71,6 +77,7 @@ Users upload one or more panel images and provide basic inventory information (c
   - Sends a `get_asset_information` tool schema with `tool_choice` pinned to that function, so the model always answers with structured arguments.
   - Reads the uploaded image, encodes to base64, and sends prompt + image as a `data:` URL content part.
   - Parses the tool call arguments and returns them as structured JSON.
+  - Exports `combineAssets`, the shared averaging/summing rule used by both the backend and the frontend.
   - Deletes the temporary uploaded file once processing is complete.
 - `public/index.html` – Main HTML shell for the SPA UI.
 - `public/script.js` – Frontend behavior:
