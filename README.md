@@ -28,6 +28,11 @@ Users upload one or more panel images and provide basic inventory information (c
   - Input power uses the panel's own `input_kw` when it is visible, falling back to `% full load amps × full-load kW` only when it is not. Amps percentage does not scale linearly with power, so the fallback overstates draw at part load.
   - Chilled water flow uses the panel's `chilled_water_flow_gpm` when visible, falling back to design flow (`2.4 × capacity`). The fallback assumes design flow at every load, which understates kW/ton on a part-loaded chiller.
   - Where a chiller already runs below its AHRI baseline the savings figures are floored at zero and a note is shown, rather than reporting negative savings.
+  - Any reading the image does not supply is named in a "Diagnosis unavailable" note. Previously an absent value propagated as `NaN` through every row of the results table.
+  - The results state which figures were measured and which were assumed, since an estimated input power or an assumed design flow moves the answer more than any other input.
+
+- **AHRI baseline by interpolation**
+  - The ARI lookup interpolates bilinearly across condenser water temperature and % capacity. Snapping to the nearest gridpoint discarded most of the reading: 79.5 °F fell to the 75 °F row, giving a 0.43 kW/ton target where interpolation gives 0.50.
 
 - **Multi‑asset support**
   - If the model returns multiple `assets` for a single image, the backend combines them: temperatures and percentages are averaged, extensive quantities are summed. Summing every field produced impossible readings such as 96 °F chilled water.
@@ -77,18 +82,21 @@ Users upload one or more panel images and provide basic inventory information (c
   - Sends a `get_asset_information` tool schema with `tool_choice` pinned to that function, so the model always answers with structured arguments.
   - Reads the uploaded image, encodes to base64, and sends prompt + image as a `data:` URL content part.
   - Parses the tool call arguments and returns them as structured JSON.
-  - Exports `combineAssets`, the shared averaging/summing rule used by both the backend and the frontend.
+  - Retries transient failures (timeouts, 429s and 5xx) with exponential backoff; a 4xx fails immediately.
   - Deletes the temporary uploaded file once processing is complete.
+- `public/calculations.js` – All calculation logic, with no DOM access:
+  - `combineAssets` – the averaging/summing rule.
+  - `getAriTable` / `lookupKwPerTon` – ARI baseline lookup with bilinear interpolation.
+  - `computeDiagnosis` – the full derivation, returning either the figures or a description of what is missing.
+  - Loaded as a plain script by the browser and `require`d by `src/index.js`, so both sides run the same code rather than two copies that drift.
 - `public/index.html` – Main HTML shell for the SPA UI.
-- `public/script.js` – Frontend behavior:
+- `public/script.js` – Frontend behavior, DOM only:
   - Handles image selection & preview.
   - Manages inventory inputs.
-  - Calls the backend `/extract` endpoint.
-  - Aggregates extracted data and performs performance calculations.
-  - Renders both raw parameters and diagnosis tables.
+  - Calls the backend `/extract` endpoint at a relative URL, so the page works against whichever server delivered it.
+  - Renders the parameters and diagnosis tables, plus notes covering missing readings, baseline performance and assumptions used.
+- `test/calculations.test.js` – `node --test` coverage of the calculation module.
 - `.env` – Environment variables (not committed) such as API key and port.
-
-> Note: In the current `public/script.js`, the backend URL is hard‑coded to the deployed endpoint `https://image-recognition.deltaenergyplus.com/extract`. For local development, you may want to adjust this to your local server (see below).
 
 ---
 
@@ -133,6 +141,10 @@ Create a `.env` file in the project root:
 YOLO_API_KEY=your_yolo_auto_api_key_here
 YOLO_BASE_URL=https://yolo-auto.com/v1   # optional, this is the default
 YOLO_MODEL=qwen3.8-27b                   # optional, this is the default
+YOLO_TIMEOUT_MS=120000                   # optional, per-request timeout
+YOLO_MAX_ATTEMPTS=3                      # optional, attempts before giving up
+MAX_IMAGE_BYTES=20971520                 # optional, per-image upload limit
+MAX_IMAGES=10                            # optional, images per request
 PORT=4914                                # optional, defaults to 4914 if omitted
 ```
 
@@ -152,19 +164,15 @@ Server is running on http://localhost:4914
 
 Then open the URL in your browser.
 
-> **Note:** For purely local development, you may want `public/script.js` to call your local backend instead of the production endpoint. Change:
->
-> ```js
-> fetch('https://image-recognition.deltaenergyplus.com/extract', { ... })
-> ```
->
-> to:
->
-> ```js
-> fetch('/extract', { ... })
-> ```
->
-> so the frontend will talk directly to your local Express server.
+The frontend calls `/extract` relatively, so it talks to whichever server served the page with no edit required.
+
+### Running the Tests
+
+```bash
+npm test
+```
+
+Runs the calculation suite under Node's built-in test runner. No dependencies beyond Node itself.
 
 ---
 

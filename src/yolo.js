@@ -3,6 +3,8 @@ const fs = require('fs');
 const API_KEY = process.env.YOLO_API_KEY;
 const BASE_URL = process.env.YOLO_BASE_URL || 'https://yolo-auto.com/v1';
 const MODEL = process.env.YOLO_MODEL || 'qwen3.8-27b';
+const TIMEOUT_MS = Number(process.env.YOLO_TIMEOUT_MS) || 120000;
+const MAX_ATTEMPTS = Number(process.env.YOLO_MAX_ATTEMPTS) || 3;
 
 const NUMBER = { type: 'number' };
 
@@ -50,76 +52,77 @@ async function extractInformation(imagePath, mimeType, chillerCapacity, chillerF
 
     const prompt = `Extract all visible asset information for each chiller from this image. If there are multiple chillers, extract the information for each one individually. Call the get_asset_information function with the data you find. Ensure that all extracted values are returned as numbers. For context, the chiller capacity is ${chillerCapacity} tons and the chiller full load is ${chillerFullLoad} kW; these two values are context only, so do not report them back as extracted values. Only include fields you can actually read on the panel, and omit any field that is not visible.`;
 
-    const response = await fetch(`${BASE_URL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${API_KEY}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            model: MODEL,
-            messages: [{
-                role: 'user',
-                content: [
-                    { type: 'text', text: prompt },
-                    { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } }
-                ]
-            }],
-            tools: [assetInformationTool],
-            tool_choice: { type: 'function', function: { name: 'get_asset_information' } }
-        })
+    const body = JSON.stringify({
+        model: MODEL,
+        messages: [{
+            role: 'user',
+            content: [
+                { type: 'text', text: prompt },
+                { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } }
+            ]
+        }],
+        tools: [assetInformationTool],
+        tool_choice: { type: 'function', function: { name: 'get_asset_information' } }
     });
 
-    if (!response.ok) {
-        const body = await response.text();
-        throw new Error(`Yolo-Auto request failed (${response.status}): ${body.slice(0, 500)}`);
-    }
+    return retry(async () => {
+        const response = await fetch(`${BASE_URL}/chat/completions`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body,
+            // Without this a stalled connection hangs the upload indefinitely.
+            signal: AbortSignal.timeout(TIMEOUT_MS)
+        });
 
-    const result = await response.json();
-    const toolCalls = result.choices?.[0]?.message?.tool_calls;
+        if (!response.ok) {
+            const text = await response.text().catch(() => '');
+            const error = new Error(`Yolo-Auto request failed (${response.status}): ${text.slice(0, 500)}`);
+            // Rate limits and server faults are worth another attempt; a bad
+            // request or a rejected key will fail identically every time.
+            error.retryable = response.status === 429 || response.status >= 500;
+            throw error;
+        }
 
-    if (toolCalls && toolCalls.length > 0) {
-        const toolCall = toolCalls[0];
-        if (toolCall.function?.name === 'get_asset_information') {
+        const result = await response.json();
+        const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
+
+        if (toolCall?.function?.name === 'get_asset_information') {
             return JSON.parse(toolCall.function.arguments);
         }
-    }
 
-    throw new Error('Could not extract information from the image.');
+        // The model occasionally answers in prose despite tool_choice, which a
+        // second attempt usually settles.
+        const error = new Error('Could not extract information from the image.');
+        error.retryable = true;
+        throw error;
+    });
 }
 
-// Temperatures and percentages describe an operating point rather than a
-// quantity, so they are averaged across assets; summing them yields readings
-// that cannot occur on a real panel.
-const AVERAGED_FIELDS = new Set([
-    'full_load_amps_percent',
-    'chilled_liquid_leaving_temp_f',
-    'chilled_liquid_entering_temp_f',
-    'condenser_liquid_leaving_temp_f',
-    'condenser_liquid_entering_temp_f',
-    'discharge_superheat_f'
-]);
+// Retries transient failures with exponential backoff and a little jitter.
+async function retry(fn) {
+    let lastError;
 
-function combineAssets(assets) {
-    const combined = {};
-    const counts = {};
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+            return await fn();
+        } catch (error) {
+            lastError = error;
 
-    for (const asset of assets) {
-        for (const key in asset) {
-            if (typeof asset[key] === 'number') {
-                combined[key] = (combined[key] || 0) + asset[key];
-                counts[key] = (counts[key] || 0) + 1;
-            }
+            // AbortError from the timeout above has no `retryable` flag but is
+            // exactly the kind of failure worth repeating.
+            const retryable = error.retryable ?? (error.name === 'TimeoutError' || error.name === 'AbortError');
+            if (!retryable || attempt === MAX_ATTEMPTS) break;
+
+            const delay = 500 * 2 ** (attempt - 1) + Math.floor(Math.random() * 100);
+            console.warn(`Yolo-Auto attempt ${attempt} failed (${error.message}). Retrying in ${delay}ms.`);
+            await new Promise(resolve => setTimeout(resolve, delay));
         }
     }
 
-    for (const key of Object.keys(combined)) {
-        if (AVERAGED_FIELDS.has(key) && counts[key] > 1) {
-            combined[key] /= counts[key];
-        }
-    }
-
-    return combined;
+    throw lastError;
 }
 
-module.exports = { extractInformation, combineAssets };
+module.exports = { extractInformation };

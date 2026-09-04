@@ -82,40 +82,17 @@ extractButton.addEventListener('click', async () => {
         displayData(extractedData);
     } catch (error) {
         console.error(error);
-        output.innerHTML = '<p class="error">An error occurred while extracting information. Please try again.</p>';
+        // Show what actually went wrong; "an error occurred" gave the operator
+        // nothing to act on.
+        output.innerHTML = '';
+        const message = document.createElement('p');
+        message.classList.add('error');
+        message.textContent = `Could not analyse the images: ${error.message}`;
+        output.appendChild(message);
     } finally {
         extractButton.disabled = false;
     }
 });
-
-function getAriTable(chillerCapacity) {
-    const tons = parseFloat(chillerCapacity);
-
-    // ARI tables for different tonnage ranges
-    const table_small = { // < 500 tons
-        85: { 100: 0.62, 90: 0.61, 80: 0.60, 70: 0.61, 60: 0.63, 50: 0.61 },
-        75: { 100: 0.53, 90: 0.50, 80: 0.48, 70: 0.46, 60: 0.48, 50: 0.46 },
-        65: { 100: 0.45, 90: 0.41, 80: 0.38, 70: 0.35, 60: 0.33, 50: 0.31 }
-    };
-    const table_medium = { // 500 - 1500 tons
-        85: { 100: 0.60, 90: 0.59, 80: 0.58, 70: 0.59, 60: 0.61, 50: 0.59 },
-        75: { 100: 0.51, 90: 0.48, 80: 0.46, 70: 0.44, 60: 0.46, 50: 0.44 },
-        65: { 100: 0.43, 90: 0.39, 80: 0.36, 70: 0.33, 60: 0.31, 50: 0.29 }
-    };
-    const table_large = { // > 1500 tons
-        85: { 100: 0.59, 90: 0.58, 80: 0.57, 70: 0.58, 60: 0.60, 50: 0.58 },
-        75: { 100: 0.50, 90: 0.47, 80: 0.45, 70: 0.43, 60: 0.45, 50: 0.43 },
-        65: { 100: 0.42, 90: 0.38, 80: 0.35, 70: 0.32, 60: 0.30, 50: 0.28 }
-    };
-
-    if (tons < 500) {
-        return table_small;
-    } else if (tons >= 500 && tons <= 1500) {
-        return table_medium;
-    } else {
-        return table_large;
-    }
-}
 
 function generateSuggestions(condenserDeltaT, dischargeSuperheat) {
     const suggestions = [];
@@ -128,45 +105,46 @@ function generateSuggestions(condenserDeltaT, dischargeSuperheat) {
     return suggestions;
 }
 
-function findClosest(value, array) {
-    return array.reduce((prev, curr) => Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev);
+function addRow(tbody, key, value, decimals) {
+    const row = document.createElement('tr');
+    const fieldCell = document.createElement('td');
+    const mapEntry = displayMap[key];
+    fieldCell.textContent = mapEntry
+        ? mapEntry.displayName
+        : key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+    const valueCell = document.createElement('td');
+    const unit = mapEntry ? mapEntry.unit : '';
+    const shown = typeof value === 'number' && decimals !== undefined ? value.toFixed(decimals) : value;
+    valueCell.textContent = `${shown} ${unit}`;
+
+    row.appendChild(fieldCell);
+    row.appendChild(valueCell);
+    tbody.appendChild(row);
+    return row;
 }
 
-// Temperatures and percentages describe an operating point rather than a
-// quantity, so they are averaged across images. Summing them produced
-// impossible readings (two copies of one panel gave 96 degF chilled water and
-// 138% full load amps).
-const AVERAGED_FIELDS = new Set([
-    'full_load_amps_percent',
-    'chilled_liquid_leaving_temp_f',
-    'chilled_liquid_entering_temp_f',
-    'condenser_liquid_leaving_temp_f',
-    'condenser_liquid_entering_temp_f',
-    'discharge_superheat_f',
-]);
-
-function combineAssets(assets) {
-    const combined = {};
-    const counts = {};
-
-    for (const asset of assets) {
-        for (const key in asset) {
-            if (typeof asset[key] === 'number') {
-                combined[key] = (combined[key] || 0) + asset[key];
-                counts[key] = (counts[key] || 0) + 1;
-            } else {
-                combined[key] = asset[key];
-            }
+function addNote(title, body, className) {
+    const note = document.createElement('div');
+    note.classList.add(className);
+    const noteTitle = document.createElement('h3');
+    noteTitle.textContent = title;
+    note.appendChild(noteTitle);
+    if (typeof body === 'string') {
+        const paragraph = document.createElement('p');
+        paragraph.textContent = body;
+        note.appendChild(paragraph);
+    } else {
+        const list = document.createElement('ul');
+        for (const item of body) {
+            const listItem = document.createElement('li');
+            listItem.textContent = item;
+            list.appendChild(listItem);
         }
+        note.appendChild(list);
     }
-
-    for (const key of Object.keys(combined)) {
-        if (AVERAGED_FIELDS.has(key) && counts[key] > 1) {
-            combined[key] /= counts[key];
-        }
-    }
-
-    return combined;
+    output.appendChild(note);
+    return note;
 }
 
 function displayData(data) {
@@ -177,147 +155,89 @@ function displayData(data) {
     combinedData.chiller_full_load_kw = chillerFullLoadInput.value;
 
     const table = document.createElement('table');
-    const thead = document.createElement('thead');
     const tbody = document.createElement('tbody');
 
-    // const headerRow = document.createElement('tr');
-    // const fieldHeader = document.createElement('th');
-    // fieldHeader.textContent = ``;
-    // const valueHeader = document.createElement('th');
-    // valueHeader.textContent = 'Value';
-    // headerRow.appendChild(fieldHeader);
-    // headerRow.appendChild(valueHeader);
-    // thead.appendChild(headerRow);
-
-    // sort
-    const sortedKeys = Object.keys(combinedData).sort();
-
+    // Only render readings that actually carry a value; an absent one used to
+    // surface as "undefined °F".
+    const sortedKeys = Object.keys(combinedData)
+        .filter(key => combinedData[key] !== undefined && combinedData[key] !== null && combinedData[key] !== '')
+        .sort();
 
     for (const key of sortedKeys) {
-        const row = document.createElement('tr');
-        const fieldCell = document.createElement('td');
-        const mapEntry = displayMap[key];
-        fieldCell.textContent = mapEntry ? mapEntry.displayName : key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-        const valueCell = document.createElement('td');
-        const unit = mapEntry ? mapEntry.unit : '';
-        valueCell.textContent = `${combinedData[key]} ${unit}`;
-        row.appendChild(fieldCell);
-        row.appendChild(valueCell);
-        tbody.appendChild(row);
+        addRow(tbody, key, combinedData[key]);
     }
 
-    table.appendChild(thead);
     table.appendChild(tbody);
     output.appendChild(table);
 
-    const topic =  document.createElement('h2');
+    const diagnosis = computeDiagnosis(
+        combinedData,
+        chillerCapacityInput.value,
+        chillerFullLoadInput.value
+    );
+
+    if (diagnosis.missing.length > 0) {
+        addNote(
+            'Diagnosis unavailable',
+            ['These readings could not be found on the image or in the inventory inputs:']
+                .concat(diagnosis.missing),
+            'suggestions'
+        );
+        return;
+    }
+
+    if (diagnosis.error) {
+        addNote('Diagnosis unavailable', diagnosis.error, 'suggestions');
+        return;
+    }
+
+    const topic = document.createElement('h2');
     topic.textContent = 'Diagnosis';
     output.appendChild(topic);
 
     const calculationsTable = document.createElement('table');
-    // const calculationsThead = document.createElement('thead');
     const calculationsTbody = document.createElement('tbody');
 
-    // const calculationsHeaderRow = document.createElement('tr');
-    // calculationsHeaderRow.innerHTML = '<th>Results</th><th>Value</th>';
-    // calculationsThead.appendChild(calculationsHeaderRow);
-
-    const deltaT = combinedData.chilled_liquid_entering_temp_f - combinedData.chilled_liquid_leaving_temp_f;
-    // Design flow is only an assumption; use the panel's own flow when it shows one.
-    const measuredFlowGPM = parseFloat(combinedData.chilled_water_flow_gpm);
-    const flowGPM = measuredFlowGPM > 0
-        ? measuredFlowGPM
-        : 2.4 * parseFloat(chillerCapacityInput.value);
-    const tons = (deltaT * flowGPM) / 24;
-
-    const condenserDeltaT = combinedData.condenser_liquid_leaving_temp_f - combinedData.condenser_liquid_entering_temp_f;
-
-    // A measured kW beats estimating it from % full load amps, which does not
-    // scale linearly with power and overstates the draw at part load.
-    const measuredInputKw = parseFloat(combinedData.input_kw);
-    const inputPower = measuredInputKw > 0
-        ? measuredInputKw
-        : (parseFloat(combinedData.full_load_amps_percent) / 100) * parseFloat(combinedData.chiller_full_load_kw);
-    const actualKWTon = inputPower / tons;
-
-    const percentCapacity = (tons / parseFloat(combinedData.chiller_capacity_tons)) * 100;
-
-    const cwet = parseFloat(combinedData.condenser_liquid_entering_temp_f);
-    const ariTable = getAriTable(combinedData.chiller_capacity_tons);
-    const cwetTemps = Object.keys(ariTable).map(Number);
-    const closestCwet = findClosest(cwet, cwetTemps);
-
-    const percentCaps = Object.keys(ariTable[closestCwet]).map(Number);
-    const closestPercentCap = findClosest(percentCapacity, percentCaps);
-
-    const kwTonNeeded = ariTable[closestCwet][closestPercentCap];
-
-    const inefficiencyAbsolute = actualKWTon - kwTonNeeded;
-    // A chiller running below the AHRI baseline has no savings left to take,
-    // so the figures are floored rather than reported as negative savings.
-    const beatsBaseline = inefficiencyAbsolute <= 0;
-    const inefficiency = beatsBaseline ? 0 : (inefficiencyAbsolute / kwTonNeeded) * 100;
-    const kwSaved = beatsBaseline ? 0 : inefficiencyAbsolute * tons;
-
     const calculations = {
-        // deltaT,
-        flowGPM,
-        // tons,
-        // condenserDeltaT,
-        inputPower,
-        // actualKWTon,
-        // percentCapacity,
-        // kwTonNeeded,
-        inefficiency,
-        kwSaved
+        deltaT: diagnosis.deltaT,
+        flowGPM: diagnosis.flowGPM,
+        tons: diagnosis.tons,
+        inputPower: diagnosis.inputPower,
+        actualKWTon: diagnosis.actualKWTon,
+        percentCapacity: diagnosis.percentCapacity,
+        kwTonNeeded: diagnosis.kwTonNeeded,
+        inefficiency: diagnosis.inefficiency,
+        kwSaved: diagnosis.kwSaved,
     };
 
-    for (const key in calculations) {
-        const row = document.createElement('tr');
-        const fieldCell = document.createElement('td');
-        const mapEntry = displayMap[key];
-        fieldCell.textContent = mapEntry ? mapEntry.displayName : key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-        const valueCell = document.createElement('td');
-        const unit = mapEntry ? mapEntry.unit : '';
-        valueCell.textContent = `${calculations[key].toFixed(2)} ${unit}`;
-        row.appendChild(fieldCell);
-        row.appendChild(valueCell);
-        calculationsTbody.appendChild(row);
+    for (const key of Object.keys(calculations)) {
+        addRow(calculationsTbody, key, calculations[key], 2);
     }
 
-    // calculationsTable.appendChild(calculationsThead);
     calculationsTable.appendChild(calculationsTbody);
     output.appendChild(calculationsTable);
 
-    if (beatsBaseline) {
-        const note = document.createElement('div');
-        note.classList.add('suggestions');
-        const noteTitle = document.createElement('h3');
-        noteTitle.textContent = 'Performing better than AHRI baseline';
-        const noteBody = document.createElement('p');
-        noteBody.textContent = `This chiller is running at ${actualKWTon.toFixed(2)} kW/ton against an AHRI target of ${kwTonNeeded.toFixed(2)} kW/ton, so there are no savings to recover at this operating point.`;
-        note.appendChild(noteTitle);
-        note.appendChild(noteBody);
-        output.appendChild(note);
+    if (diagnosis.beatsBaseline) {
+        addNote(
+            'Performing better than AHRI baseline',
+            `This chiller is running at ${diagnosis.actualKWTon.toFixed(2)} kW/ton against an AHRI target of ${diagnosis.kwTonNeeded.toFixed(2)} kW/ton, so there are no savings to recover at this operating point.`,
+            'suggestions'
+        );
     }
 
-    // const suggestions = generateSuggestions(condenserDeltaT, combinedData.discharge_superheat_f);
-
-    // if (suggestions.length > 0) {
-    //     const suggestionsDiv = document.createElement('div');
-    //     suggestionsDiv.classList.add('suggestions');
-    //     const suggestionsTitle = document.createElement('h3');
-    //     suggestionsTitle.textContent = 'Recommendations and Analysis';
-    //     suggestionsDiv.appendChild(suggestionsTitle);
-    //     const suggestionsList = document.createElement('ul');
-    //     suggestions.forEach(suggestion => {
-    //         const listItem = document.createElement('li');
-    //         listItem.textContent = suggestion;
-    //         suggestionsList.appendChild(listItem);
-    //     });
-    //     suggestionsDiv.appendChild(suggestionsList);
-    //     output.appendChild(suggestionsDiv);
-    // }
+    // Say plainly which figures were read off the panel and which were assumed,
+    // because an estimated input power and an assumed design flow move the
+    // result far more than any other input.
+    const assumptions = [];
+    if (diagnosis.inputPowerSource === 'estimated') {
+        assumptions.push('Input power was estimated from % full load amps, as the panel did not show kW. Amps percentage does not scale linearly with power, so this overstates the draw at part load.');
+    }
+    if (diagnosis.flowSource === 'design') {
+        assumptions.push('Chilled water flow was assumed at design (2.4 GPM per ton), as the panel did not show a flow reading. This overstates tons, and so understates kW/ton, on a part-loaded chiller.');
+    }
+    if (assumptions.length > 0) {
+        addNote('Assumptions used', assumptions, 'suggestions');
+    }
 }
 
 async function callBackend(imageFiles, chillerCapacity, chillerFullLoad) {
@@ -328,13 +248,16 @@ async function callBackend(imageFiles, chillerCapacity, chillerFullLoad) {
     formData.append('chillerCapacity', chillerCapacity);
     formData.append('chillerFullLoad', chillerFullLoad);
 
-    const response = await fetch('https://image-recognition.deltaenergyplus.com/extract', {
+    // Relative, so the page works against whichever server delivered it -
+    // production or a local dev server - without an edit.
+    const response = await fetch('/extract', {
         method: 'POST',
         body: formData,
     });
 
     if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail && detail.error ? detail.error : `HTTP error! status: ${response.status}`);
     }
 
     return await response.json();
