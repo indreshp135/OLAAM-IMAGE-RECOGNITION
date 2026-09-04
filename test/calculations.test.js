@@ -170,3 +170,48 @@ test('no diagnosis field is ever NaN or Infinity', () => {
         }
     }
 });
+
+test('a negative amps percentage never yields a negative input power', () => {
+    const { input_kw, ...withoutKw } = panel;
+    const result = computeDiagnosis({ ...withoutKw, full_load_amps_percent: -2.2 }, 1800, 1080);
+    assert.ok(result.missing.some(m => /Input power/.test(m)));
+    assert.strictEqual(result.inputPower, undefined);
+});
+
+test('a zero amps percentage is treated as no reading', () => {
+    const { input_kw, ...withoutKw } = panel;
+    const result = computeDiagnosis({ ...withoutKw, full_load_amps_percent: 0 }, 1800, 1080);
+    assert.ok(result.missing.some(m => /Input power/.test(m)));
+});
+
+test('savings and every displayed figure stay non-negative under fuzzing', () => {
+    // Displayed rows only; condenserDeltaT is legitimately signed and is not shown.
+    const shown = ['deltaT', 'flowGPM', 'tons', 'inputPower', 'actualKWTon',
+        'percentCapacity', 'kwTonNeeded', 'inefficiency', 'kwSaved'];
+    const pick = a => a[Math.floor(Math.random() * a.length)];
+    const R = (lo, hi) => lo + Math.random() * (hi - lo);
+
+    let diagnosed = 0;
+    for (let i = 0; i < 50000; i++) {
+        const readings = {};
+        const maybe = (k, v) => { if (Math.random() < 0.85) readings[k] = v; };
+        maybe('chilled_liquid_entering_temp_f', R(-20, 120));
+        maybe('chilled_liquid_leaving_temp_f', R(-20, 120));
+        maybe('condenser_liquid_entering_temp_f', R(-20, 200));
+        maybe('condenser_liquid_leaving_temp_f', R(-20, 200));
+        maybe('full_load_amps_percent', R(-50, 250));
+        maybe('input_kw', pick([R(-500, 5000), 0, -1]));
+        maybe('chilled_water_flow_gpm', pick([R(-1000, 20000), 0]));
+
+        const result = computeDiagnosis(readings, pick([R(-100, 5000), 0, '', 'abc', 1800]), pick([R(-100, 3000), 0, '', 1080]));
+        if (result.missing.length || result.error) continue;
+        diagnosed++;
+
+        for (const key of shown) {
+            const value = result[key];
+            assert.ok(Number.isFinite(value), `${key} was ${value} for ${JSON.stringify(readings)}`);
+            assert.ok(value >= 0, `${key} was negative (${value}) for ${JSON.stringify(readings)}`);
+        }
+    }
+    assert.ok(diagnosed > 1000, `fuzz only produced ${diagnosed} diagnoses; the ranges are not exercising the code`);
+});

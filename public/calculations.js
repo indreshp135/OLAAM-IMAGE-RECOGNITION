@@ -136,7 +136,9 @@ function computeDiagnosis(readings, chillerCapacityTons, chillerFullLoadKw) {
     if (isPositive(measuredInputKw)) {
         inputPower = measuredInputKw;
         inputPowerSource = 'panel';
-    } else if (Number.isFinite(percentFullLoadAmps) && isPositive(fullLoadKw)) {
+    } else if (isPositive(percentFullLoadAmps) && isPositive(fullLoadKw)) {
+        // A negative or zero amps percentage is either a misread or a chiller
+        // that is not running; either way it cannot yield a real input power.
         inputPower = (percentFullLoadAmps / 100) * fullLoadKw;
         inputPowerSource = 'estimated';
     } else {
